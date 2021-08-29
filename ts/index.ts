@@ -19,6 +19,10 @@ namespace is {
     export function integer(value: any) {
         return parseFloat(value) === parseInt(value);
     }
+
+    export function boolean(value: any) {
+        return [0, 1].includes(parseInt(value));
+    }
 }
 
 namespace marker {
@@ -35,6 +39,22 @@ namespace marker {
     }
 }
 
+function getType(values: any[], for_database = false) {
+    if (values.every(isNumber)) {
+        if (values.length > 1 && values.every(is.boolean)) {
+            return for_database ? "INTEGER" : "boolean";
+        }
+
+        if (for_database && values.every(is.integer)) {
+            return for_database ? "INTEGER" : "number";
+        }
+
+        return for_database ? "FLOAT" : "number";
+    }
+
+    return for_database ? "TEXT" : "string";
+}
+
 function removeKeys(object: Record, keys: (keyof Record)[]) {
     keys.forEach(key => {
         delete object[key];
@@ -43,6 +63,10 @@ function removeKeys(object: Record, keys: (keyof Record)[]) {
     object.children.forEach(object => removeKeys(object, keys));
 
     return object;
+}
+
+function escapeProperty(name: string) {
+    return name.replace(/\s/gu, "_");
 }
 
 function mdFlatten(object: Record): string {
@@ -309,7 +333,7 @@ export class MDData {
                     let marker_type = name_to_record[marker.strip(type_to_table[type].raw[property])][0].type;
 
                     columns.unshift({
-                        field: `\`${type}_${property.replace(/\s/gu, "_")}_uuid\``,
+                        field: `\`${type}_${escapeProperty(property)}_uuid\``,
                         property: property,
                         type: "TEXT"
                     });
@@ -327,7 +351,7 @@ export class MDData {
                     }
 
                     columns.push({
-                        field: `\`${type}_${property.replace(/\s/gu, "_")}\``,
+                        field: `\`${type}_${escapeProperty(property)}\``,
                         property: property,
                         type: format
                     });
@@ -409,7 +433,82 @@ export class MDData {
     }
 
     toTS() {
-        return "";
+        let objects = flatten(this.data);
+        let type_to_properties: Generic.Object<
+            Generic.Object<{
+                values: any[];
+                required: boolean;
+                type: string;
+            }>
+        > = {};
+
+        objects.forEach(object => {
+            if (!(object.type in type_to_properties)) {
+                type_to_properties[object.type] = {
+                    [`${object.type}_uuid`]: {
+                        values: [""],
+                        required: true,
+                        type: "string"
+                    }
+                };
+
+                if (object.parent) {
+                    type_to_properties[object.type][`${object.type}_${object.parent.type}_uuid`] = {
+                        values: [""],
+                        required: true,
+                        type: "string"
+                    };
+                }
+            }
+
+            for (let property in object.properties) {
+                let property_escaped = escapeProperty(property);
+                let property_name = `${object.type}_${property_escaped}`;
+
+                if (!(property in type_to_properties[object.type])) {
+                    type_to_properties[object.type][property_name] = {
+                        values: [],
+                        required: false,
+                        type: "string"
+                    };
+                }
+                type_to_properties[object.type][property_name].values.push(object.properties[property as keyof Record]);
+            }
+        });
+
+        for (let type in type_to_properties) {
+            for (let property in type_to_properties[type]) {
+                type_to_properties[type][property].type = getType(type_to_properties[type][property].values);
+            }
+        }
+
+        return `class MDDataClass<Properties> {
+    data: Properties;
+    
+    constructor (properties: Properties) {
+        this.data = properties;
+    }
+}
+
+${Object.keys(type_to_properties)
+    .map(type => {
+        return `export namespace ${ucwords(type)} {
+    export interface Object {
+        ${Object.keys(type_to_properties[type])
+            .map(property => {
+                let property_name = property;
+                if (!type_to_properties[type][property].required) {
+                    property_name += "?";
+                }
+
+                return `${property_name}: ${type_to_properties[type][property].type}`;
+            })
+            .join(";\n\t\t")}
+    }
+
+    export class Instance extends MDDataClass<Object> {}`;
+    })
+    .join("\n}\n\n")}\n}`;
     }
     /* #endregion */
 }
