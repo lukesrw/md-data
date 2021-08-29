@@ -392,41 +392,44 @@ export class MDData {
             }
 
             schema.push(
-                `CREATE TABLE IF NOT EXISTS \`${type}s\` (\n\t${columns
-                    .map(column => {
-                        return `${column.field} ${column.type}`;
-                    })
-                    .join(",\n\t")},\n\n\t${keys.join(",\n\t")}\n);`
+                `CREATE TABLE IF NOT EXISTS \`${type}s\` (
+    ${columns
+        .map(column => {
+            return `${column.field} ${column.type}`;
+        })
+        .join(",\n    ")},
+
+    ${keys.join(",\n    ")}
+);`
             );
 
             if (type_to_table[type].insert.length) {
                 inserts.push(
-                    `INSERT INTO \`${type}s\`\n\t(${columns.map(column => column.field).join(", ")}) VALUES\n\t` +
-                        type_to_table[type].insert
-                            .map(record => {
-                                return `(${columns
-                                    .map(column => {
-                                        if (record.properties[column.property]) {
-                                            if (marker.test(record.properties[column.property])) {
-                                                return `"${
-                                                    name_to_record[marker.strip(record.properties[column.property])][0]
-                                                        .properties.uuid
-                                                }"`;
-                                            }
+                    `INSERT INTO \`${type}s\`
+    (${columns.map(column => column.field).join(", ")}) VALUES
+    ${type_to_table[type].insert
+        .map(record => {
+            return `(${columns
+                .map(column => {
+                    if (record.properties[column.property]) {
+                        if (marker.test(record.properties[column.property])) {
+                            return `"${
+                                name_to_record[marker.strip(record.properties[column.property])][0].properties.uuid
+                            }"`;
+                        }
 
-                                            if (isNumber(record.properties[column.property])) {
-                                                return record.properties[column.property];
-                                            }
+                        if (isNumber(record.properties[column.property])) {
+                            return record.properties[column.property];
+                        }
 
-                                            return `"${record.properties[column.property]}"`;
-                                        }
+                        return `"${record.properties[column.property]}"`;
+                    }
 
-                                        return "NULL";
-                                    })
-                                    .join(", ")})`;
-                            })
-                            .join(",\n\t") +
-                        ";"
+                    return "NULL";
+                })
+                .join(", ")})`;
+        })
+        .join(",\n    ")};`
                 );
             }
         });
@@ -517,12 +520,13 @@ ${Object.keys(type_to_properties)
 
                 return `${property_name}: ${type_to_properties[type][property].type}`;
             })
-            .join(";\n\t\t")};
+            .join(";\n        ")};
     }
 
     export class Instance extends MDDataClass<Object> {}`;
     })
-    .join("\n}\n\n")}\n}
+    .join("\n}\n\n")}
+}
 `;
     }
     /* #endregion */
