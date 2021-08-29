@@ -26,13 +26,35 @@ namespace is {
 }
 
 namespace marker {
-    export function test(string: string) {
+    export function test(string: string | string[]) {
+        if (Array.isArray(string)) return string.some(test);
+
         return /^{.+?}$/.test(string);
     }
 
-    export function strip(string: string) {
+    export function strip(string: string | string[]): string {
+        if (Array.isArray(string)) {
+            let marker = "";
+
+            if (
+                string.some(item => {
+                    if (test(item)) {
+                        marker = item;
+
+                        return true;
+                    }
+
+                    return false;
+                })
+            ) {
+                return strip(marker);
+            }
+
+            return string[0];
+        }
+
         if (test(string)) {
-            string = string.substr(1, string.length - 2);
+            return string.substr(1, string.length - 2);
         }
 
         return string;
@@ -49,7 +71,7 @@ function getType(values: any[], for_database = false) {
             return for_database ? "INTEGER" : "number";
         }
 
-        return for_database ? "FLOAT" : "number";
+        return for_database ? "REAL" : "number";
     }
 
     return for_database ? "TEXT" : "string";
@@ -262,7 +284,7 @@ export class MDData {
         let schema: string[] = [];
         let inserts: string[] = [];
         let type_to_table: Generic.Object<{
-            raw: Generic.Object;
+            raw: Generic.Object<any[]>;
             insert: Record[];
             parent?: Record | false;
         }> = {};
@@ -274,16 +296,22 @@ export class MDData {
          */
         flat.forEach((object, object_i) => {
             /* #region Collate objects with the same type to build table schema/inserts */
-            if (object.type in type_to_table) {
-                type_to_table[object.type].raw = Object.assign(type_to_table[object.type].raw, object.properties);
-                type_to_table[object.type].insert.push(object);
-                type_to_table[object.type].parent = type_to_table[object.type].parent || object.parent;
-            } else {
+            if (!(object.type in type_to_table)) {
                 type_to_table[object.type] = {
-                    raw: Object.assign({}, object.properties),
-                    insert: [object],
-                    parent: object.parent
+                    raw: {},
+                    insert: [],
+                    parent: false
                 };
+            }
+
+            type_to_table[object.type].insert.push(object);
+            type_to_table[object.type].parent = type_to_table[object.type].parent || object.parent;
+
+            for (let property in object.properties) {
+                if (!(property in type_to_table[object.type].raw)) {
+                    type_to_table[object.type].raw[property] = [];
+                }
+                type_to_table[object.type].raw[property].push(object.properties[property]);
             }
             /* #endregion */
 
@@ -341,14 +369,7 @@ export class MDData {
                         `FOREIGN KEY (\`${type}_${property}_uuid\`) REFERENCES \`${marker_type}s\` (\`${marker_type}_uuid\`)`
                     );
                 } else {
-                    let format = "TEXT";
-                    if (isNumber(type_to_table[type].raw[property])) {
-                        if (is.integer(type_to_table[type].raw[property])) {
-                            format = "INTEGER";
-                        } else {
-                            format = "REAL";
-                        }
-                    }
+                    let format = getType(type_to_table[type].raw[property], true);
 
                     columns.push({
                         field: `\`${type}_${escapeProperty(property)}\``,
