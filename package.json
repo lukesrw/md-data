@@ -37,7 +37,7 @@
     },
     "name": "md-database",
     "description": "Middleware for producing SQL queries from Markdown",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "repository": {
         "type": "git",
         "url": "git+ssh://git@github.com/lukesrw/md-database.git"
