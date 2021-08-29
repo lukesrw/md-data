@@ -485,7 +485,7 @@ export class MDData {
         return `class MDDataClass<Properties> {
     data: Properties;
     
-    constructor (properties: Properties) {
+    constructor(properties: Properties) {
         this.data = properties;
     }
 }
@@ -503,12 +503,13 @@ ${Object.keys(type_to_properties)
 
                 return `${property_name}: ${type_to_properties[type][property].type}`;
             })
-            .join(";\n\t\t")}
+            .join(";\n\t\t")};
     }
 
     export class Instance extends MDDataClass<Object> {}`;
     })
-    .join("\n}\n\n")}\n}`;
+    .join("\n}\n\n")}\n}
+`;
     }
     /* #endregion */
 }
