@@ -217,10 +217,46 @@ CREATE TABLE IF NOT EXISTS `occupants` (
 
 INSERT INTO `buildings`
 	(`building_uuid`, `building_house_number`, `building_street`, `building_city`, `building_postcode`) VALUES
-	("5ab1869d-570e-4f1a-90d7-4977d0eca312", "221b", "Baker Street", "London", "NW1 6XE");
+	("6475c2c4-61c5-48e8-a02c-fb6022e439ce", "221b", "Baker Street", "London", "NW1 6XE");
 
 INSERT INTO `occupants`
 	(`occupant_building_uuid`, `occupant_uuid`, `occupant_forename`, `occupant_surname`) VALUES
-	("5ab1869d-570e-4f1a-90d7-4977d0eca312", "8b79ffe0-3c4c-4734-a75f-2e6a3d1ad60a", "Sherlock", "Holmes"),
-	("5ab1869d-570e-4f1a-90d7-4977d0eca312", "07ae8153-8247-422c-9bc6-50d8d262d2f1", "John", "Watson");
+	("6475c2c4-61c5-48e8-a02c-fb6022e439ce", "f6335c8d-d798-42b4-9563-61d29a2fb813", "Sherlock", "Holmes"),
+	("6475c2c4-61c5-48e8-a02c-fb6022e439ce", "9e2aa5e6-fc6f-4ccd-9543-d163f22bb0cc", "John", "Watson");
+```
+
+### Output: TS
+
+```ts
+class MDDataClass<Properties> {
+    data: Properties;
+    
+    constructor(properties: Properties) {
+        this.data = properties;
+    }
+}
+
+export namespace Building {
+    export interface Object {
+        building_uuid: string;
+		building_house_number?: string;
+		building_street?: string;
+		building_city?: string;
+		building_postcode?: string;
+    }
+
+    export class Instance extends MDDataClass<Object> {}
+}
+
+export namespace Occupant {
+    export interface Object {
+        occupant_uuid: string;
+		occupant_building_uuid: string;
+		occupant_forename?: string;
+		occupant_surname?: string;
+    }
+
+    export class Instance extends MDDataClass<Object> {}
+}
+
 ```

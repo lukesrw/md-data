@@ -131,3 +131,9 @@ main();
 ```sql
 <SQL>
 ```
+
+### Output: TS
+
+```ts
+<TS>
+```
