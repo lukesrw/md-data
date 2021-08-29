@@ -26,9 +26,7 @@ For MDData the format of Markdown headings is the following:
 | Name  | Name to refer to this unique entity (see "Unique Depth") | `Sherlock Holmes` |
 | Type  | Category of data (singular) that this record represents  | `occupant`        |
 
-Depth is used when greater than 1 to find and assign a parent (with foreign key references).  
-Name is used to merge duplicate records, and track data-over-time changes.  
-Type is used to group items, and name the table/table fields (e.g. "occupants", "occupant_uuid").
+Depth is used when greater than 1 to find and assign a parent (with foreign key references), Name is used to merge duplicate records, and track data-over-time changes, and Type is used to group items, and name the table/table fields (e.g. "occupants", "occupant_uuid").
 
 ### Properties
 
@@ -41,6 +39,32 @@ For MDData the format of properties is the following, optional under each headin
 "Property Value" by default is considered to be `TEXT`, but will be tested and converted to `INTEGER` or `REAL` if possible.
 
 ### Unique Depth
+
+Name is used in order to track and refer to data-over-time from other records, however this relies on the name being unique. If the name is not unique this will cause collisions between multiple records, potentially combining their information.
+
+The `toSQL()` method takes a `unique_depth` argument (default: 0) in order to instruct MDData to force headings less than or equal to that depth to be unique no matter what (at the moment this has the downside of meaning they cannot be referenced).
+
+#### Example
+
+With a `unique_depth` of 1:
+
+```md
+# Season 1 (season)
+
+## Episode 1 (episode)
+
+-   Title: Pilot
+
+# Season 2 (season)
+
+## Episode 1 (episode)
+
+-   Title: Seven Thirty-Seven
+```
+
+In this Markdown example, "Season 1" and "Season 2" will always be unique (even if given the same name), however both "Episode 1" records are being interpreted as being the same record (with changes over time), so it would look like the title of episode 1 was changed for some reason in the future.
+
+The ideal solution is to update the headings to be unique ("Pilot" instead of "Episode 1" for example), as this will allow you to refer to these records throughout your data (First Seen In: {Pilot}). Alternatively if this is not possible you can update the `unique_depth` to 2 when calling `toSQL()`, but you will not be able to use these unique headings as references.
 
 ### Code
 
@@ -193,10 +217,10 @@ CREATE TABLE IF NOT EXISTS `occupants` (
 
 INSERT INTO `buildings`
 	(`building_uuid`, `building_house_number`, `building_street`, `building_city`, `building_postcode`) VALUES
-	("d6f5388d-e078-4bfa-8e8c-595a7164c574", "221b", "Baker Street", "London", "NW1 6XE");
+	("5ab1869d-570e-4f1a-90d7-4977d0eca312", "221b", "Baker Street", "London", "NW1 6XE");
 
 INSERT INTO `occupants`
 	(`occupant_building_uuid`, `occupant_uuid`, `occupant_forename`, `occupant_surname`) VALUES
-	("d6f5388d-e078-4bfa-8e8c-595a7164c574", "043474be-b7ee-4713-bc10-3c8604e34ef0", "Sherlock", "Holmes"),
-	("d6f5388d-e078-4bfa-8e8c-595a7164c574", "12f6a2bb-4656-4df4-b2a9-2918812801cf", "John", "Watson");
+	("5ab1869d-570e-4f1a-90d7-4977d0eca312", "8b79ffe0-3c4c-4734-a75f-2e6a3d1ad60a", "Sherlock", "Holmes"),
+	("5ab1869d-570e-4f1a-90d7-4977d0eca312", "07ae8153-8247-422c-9bc6-50d8d262d2f1", "John", "Watson");
 ```
