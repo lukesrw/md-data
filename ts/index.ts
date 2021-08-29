@@ -19,6 +19,10 @@ namespace is {
     export function integer(value: any) {
         return parseFloat(value) === parseInt(value);
     }
+
+    export function boolean(value: any) {
+        return [0, 1].includes(parseInt(value));
+    }
 }
 
 namespace marker {
@@ -35,6 +39,22 @@ namespace marker {
     }
 }
 
+function getType(values: any[], for_database = false) {
+    if (values.every(isNumber)) {
+        if (values.length > 1 && values.every(is.boolean)) {
+            return for_database ? "INTEGER" : "boolean";
+        }
+
+        if (for_database && values.every(is.integer)) {
+            return for_database ? "INTEGER" : "number";
+        }
+
+        return for_database ? "FLOAT" : "number";
+    }
+
+    return for_database ? "TEXT" : "string";
+}
+
 function removeKeys(object: Record, keys: (keyof Record)[]) {
     keys.forEach(key => {
         delete object[key];
@@ -43,6 +63,10 @@ function removeKeys(object: Record, keys: (keyof Record)[]) {
     object.children.forEach(object => removeKeys(object, keys));
 
     return object;
+}
+
+function escapeProperty(name: string) {
+    return name.replace(/\s/gu, "_");
 }
 
 function mdFlatten(object: Record): string {
@@ -76,199 +100,20 @@ interface Record {
     properties: Generic.Object;
 }
 
-function sqlFlatten(
-    objects: Record[] | Record,
-    unique_depth: number,
-    flat: Record[] = [],
-    is_base = true
-): string | void {
-    /* #region Flatten all Record(s) into "flat" array */
+function flatten(objects: Record[] | Record, flat: Record[] = []) {
     if (Array.isArray(objects)) {
-        objects.forEach(object => sqlFlatten(object, unique_depth, flat, false));
+        objects.forEach(object => flatten(object, flat));
     } else {
         flat.push(objects);
 
-        objects.children.forEach(child => {
-            child.parent = objects;
+        objects.children.forEach(object => {
+            object.parent = objects;
 
-            sqlFlatten(child, unique_depth, flat, false);
+            flatten(object, flat);
         });
     }
-    /* #endregion */
 
-    if (is_base) {
-        let schema: string[] = [];
-        let inserts: string[] = [];
-        let type_to_table: Generic.Object<{
-            raw: Generic.Object;
-            insert: Record[];
-            parent?: Record | false;
-        }> = {};
-        let name_to_record: Generic.Object<Record[]> = {};
-        let name_to_properties: Generic.Object = {};
-
-        /**
-         * Looping through all objects
-         */
-        flat.forEach((object, object_i) => {
-            /* #region Collate objects with the same type to build table schema/inserts */
-            if (object.type in type_to_table) {
-                type_to_table[object.type].raw = Object.assign(type_to_table[object.type].raw, object.properties);
-                type_to_table[object.type].insert.push(object);
-                type_to_table[object.type].parent = type_to_table[object.type].parent || object.parent;
-            } else {
-                type_to_table[object.type] = {
-                    raw: Object.assign({}, object.properties),
-                    insert: [object],
-                    parent: object.parent
-                };
-            }
-            /* #endregion */
-
-            /* #region Collate objects with the same name to merge properties and UUID */
-            let unique = object.name + (object.depth <= unique_depth ? `_${object_i}` : "");
-            if (!(unique in name_to_record)) {
-                name_to_record[unique] = [];
-                name_to_properties[unique] = {
-                    uuid: randomUUID()
-                };
-            }
-
-            object.properties = JSON.parse(
-                JSON.stringify(Object.assign(name_to_properties[unique], object.properties))
-            );
-
-            name_to_record[unique].push(object);
-
-            flat.push(object);
-            /* #endregion */
-        });
-
-        /**
-         * Looping through all object types to build table fields
-         */
-        Object.keys(type_to_table).forEach(type => {
-            let columns = [
-                {
-                    field: `\`${type}_uuid\``,
-                    property: "uuid",
-                    type: "TEXT"
-                }
-            ];
-            let keys = [];
-            let parent = type_to_table[type].parent;
-            if (parent) {
-                keys.push(`PRIMARY KEY (\`${type}_${parent.type}_uuid\`, \`${type}_uuid\`)`);
-            } else {
-                keys.push(`PRIMARY KEY (\`${type}_uuid\`)`);
-            }
-
-            /**
-             * Looping through all object type properties
-             */
-            Object.keys(type_to_table[type].raw).forEach(property => {
-                if (marker.test(type_to_table[type].raw[property])) {
-                    let marker_type = name_to_record[marker.strip(type_to_table[type].raw[property])][0].type;
-
-                    columns.unshift({
-                        field: `\`${type}_${property.replace(/\s/gu, "_")}_uuid\``,
-                        property: property,
-                        type: "TEXT"
-                    });
-                    keys.push(
-                        `FOREIGN KEY (\`${type}_${property}_uuid\`) REFERENCES \`${marker_type}s\` (\`${marker_type}_uuid\`)`
-                    );
-                } else {
-                    let format = "TEXT";
-                    if (isNumber(type_to_table[type].raw[property])) {
-                        if (is.integer(type_to_table[type].raw[property])) {
-                            format = "INTEGER";
-                        } else {
-                            format = "REAL";
-                        }
-                    }
-
-                    columns.push({
-                        field: `\`${type}_${property.replace(/\s/gu, "_")}\``,
-                        property: property,
-                        type: format
-                    });
-                }
-            });
-
-            if (parent) {
-                type_to_table[type].insert.forEach(object => {
-                    if (object.parent) {
-                        object.properties._parent = object.parent.properties.uuid;
-                    }
-                });
-
-                columns.unshift({
-                    field: `\`${type}_${parent.type}_uuid\``,
-                    property: "_parent",
-                    type: "TEXT"
-                });
-                keys.splice(
-                    1,
-                    0,
-                    `FOREIGN KEY (\`${type}_${parent.type}_uuid\`) REFERENCES \`${parent.type}s\` (\`${parent.type}_uuid\`)`
-                );
-            }
-
-            schema.push(
-                `CREATE TABLE IF NOT EXISTS \`${type}s\` (\n\t${columns
-                    .map(column => {
-                        return `${column.field} ${column.type}`;
-                    })
-                    .join(",\n\t")},\n\n\t${keys.join(",\n\t")}\n);`
-            );
-
-            if (type_to_table[type].insert.length) {
-                inserts.push(
-                    `INSERT INTO \`${type}s\`\n\t(${columns.map(column => column.field).join(", ")}) VALUES\n\t` +
-                        type_to_table[type].insert
-                            .map(record => {
-                                return `(${columns
-                                    .map(column => {
-                                        if (record.properties[column.property]) {
-                                            if (marker.test(record.properties[column.property])) {
-                                                return `"${
-                                                    name_to_record[marker.strip(record.properties[column.property])][0]
-                                                        .properties.uuid
-                                                }"`;
-                                            }
-
-                                            if (isNumber(record.properties[column.property])) {
-                                                return record.properties[column.property];
-                                            }
-
-                                            return `"${record.properties[column.property]}"`;
-                                        }
-
-                                        return "NULL";
-                                    })
-                                    .join(", ")})`;
-                            })
-                            .join(",\n\t") +
-                        ";"
-                );
-            }
-        });
-
-        /**
-         * Delete properties to prevent circular references
-         */
-        flat.forEach(object => {
-            if (object.parent) {
-                delete object.parent;
-            }
-
-            delete object.properties.uuid;
-            delete object.properties._parent;
-        });
-
-        return schema.concat(inserts).join("\n\n");
-    }
+    return flat;
 }
 
 export class MDData {
@@ -387,6 +232,10 @@ export class MDData {
                 content = this.toSQL(unique_depth || 0);
                 break;
 
+            case "ts":
+                content = this.toTS();
+                break;
+
             default:
                 throw new Error("Unsupported format.");
         }
@@ -409,7 +258,258 @@ export class MDData {
     }
 
     toSQL(unique_depth: number) {
-        return sqlFlatten(this.data, unique_depth) || "";
+        let flat = flatten(this.data);
+        let schema: string[] = [];
+        let inserts: string[] = [];
+        let type_to_table: Generic.Object<{
+            raw: Generic.Object;
+            insert: Record[];
+            parent?: Record | false;
+        }> = {};
+        let name_to_record: Generic.Object<Record[]> = {};
+        let name_to_properties: Generic.Object = {};
+
+        /**
+         * Looping through all objects
+         */
+        flat.forEach((object, object_i) => {
+            /* #region Collate objects with the same type to build table schema/inserts */
+            if (object.type in type_to_table) {
+                type_to_table[object.type].raw = Object.assign(type_to_table[object.type].raw, object.properties);
+                type_to_table[object.type].insert.push(object);
+                type_to_table[object.type].parent = type_to_table[object.type].parent || object.parent;
+            } else {
+                type_to_table[object.type] = {
+                    raw: Object.assign({}, object.properties),
+                    insert: [object],
+                    parent: object.parent
+                };
+            }
+            /* #endregion */
+
+            /* #region Collate objects with the same name to merge properties and UUID */
+            let unique = object.name + (object.depth <= unique_depth ? `_${object_i}` : "");
+            if (!(unique in name_to_record)) {
+                name_to_record[unique] = [];
+                name_to_properties[unique] = {
+                    uuid: randomUUID()
+                };
+            }
+
+            object.properties = JSON.parse(
+                JSON.stringify(Object.assign(name_to_properties[unique], object.properties))
+            );
+
+            name_to_record[unique].push(object);
+
+            flat.push(object);
+            /* #endregion */
+        });
+
+        /**
+         * Looping through all object types to build table fields
+         */
+        Object.keys(type_to_table).forEach(type => {
+            let columns = [
+                {
+                    field: `\`${type}_uuid\``,
+                    property: "uuid",
+                    type: "TEXT"
+                }
+            ];
+            let keys = [];
+            let parent = type_to_table[type].parent;
+            if (parent) {
+                keys.push(`PRIMARY KEY (\`${type}_${parent.type}_uuid\`, \`${type}_uuid\`)`);
+            } else {
+                keys.push(`PRIMARY KEY (\`${type}_uuid\`)`);
+            }
+
+            /**
+             * Looping through all object type properties
+             */
+            Object.keys(type_to_table[type].raw).forEach(property => {
+                if (marker.test(type_to_table[type].raw[property])) {
+                    let marker_type = name_to_record[marker.strip(type_to_table[type].raw[property])][0].type;
+
+                    columns.unshift({
+                        field: `\`${type}_${escapeProperty(property)}_uuid\``,
+                        property: property,
+                        type: "TEXT"
+                    });
+                    keys.push(
+                        `FOREIGN KEY (\`${type}_${property}_uuid\`) REFERENCES \`${marker_type}s\` (\`${marker_type}_uuid\`)`
+                    );
+                } else {
+                    let format = "TEXT";
+                    if (isNumber(type_to_table[type].raw[property])) {
+                        if (is.integer(type_to_table[type].raw[property])) {
+                            format = "INTEGER";
+                        } else {
+                            format = "REAL";
+                        }
+                    }
+
+                    columns.push({
+                        field: `\`${type}_${escapeProperty(property)}\``,
+                        property: property,
+                        type: format
+                    });
+                }
+            });
+
+            if (parent) {
+                type_to_table[type].insert.forEach(object => {
+                    if (object.parent) {
+                        object.properties._parent = object.parent.properties.uuid;
+                    }
+                });
+
+                columns.unshift({
+                    field: `\`${type}_${parent.type}_uuid\``,
+                    property: "_parent",
+                    type: "TEXT"
+                });
+                keys.splice(
+                    1,
+                    0,
+                    `FOREIGN KEY (\`${type}_${parent.type}_uuid\`) REFERENCES \`${parent.type}s\` (\`${parent.type}_uuid\`)`
+                );
+            }
+
+            schema.push(
+                `CREATE TABLE IF NOT EXISTS \`${type}s\` (\n\t${columns
+                    .map(column => {
+                        return `${column.field} ${column.type}`;
+                    })
+                    .join(",\n\t")},\n\n\t${keys.join(",\n\t")}\n);`
+            );
+
+            if (type_to_table[type].insert.length) {
+                inserts.push(
+                    `INSERT INTO \`${type}s\`\n\t(${columns.map(column => column.field).join(", ")}) VALUES\n\t` +
+                        type_to_table[type].insert
+                            .map(record => {
+                                return `(${columns
+                                    .map(column => {
+                                        if (record.properties[column.property]) {
+                                            if (marker.test(record.properties[column.property])) {
+                                                return `"${
+                                                    name_to_record[marker.strip(record.properties[column.property])][0]
+                                                        .properties.uuid
+                                                }"`;
+                                            }
+
+                                            if (isNumber(record.properties[column.property])) {
+                                                return record.properties[column.property];
+                                            }
+
+                                            return `"${record.properties[column.property]}"`;
+                                        }
+
+                                        return "NULL";
+                                    })
+                                    .join(", ")})`;
+                            })
+                            .join(",\n\t") +
+                        ";"
+                );
+            }
+        });
+
+        /**
+         * Delete properties to prevent circular references
+         */
+        flat.forEach(object => {
+            if (object.parent) {
+                delete object.parent;
+            }
+
+            delete object.properties.uuid;
+            delete object.properties._parent;
+        });
+
+        return schema.concat(inserts).join("\n\n");
+    }
+
+    toTS() {
+        let objects = flatten(this.data);
+        let type_to_properties: Generic.Object<
+            Generic.Object<{
+                values: any[];
+                required: boolean;
+                type: string;
+            }>
+        > = {};
+
+        objects.forEach(object => {
+            if (!(object.type in type_to_properties)) {
+                type_to_properties[object.type] = {
+                    [`${object.type}_uuid`]: {
+                        values: [""],
+                        required: true,
+                        type: "string"
+                    }
+                };
+
+                if (object.parent) {
+                    type_to_properties[object.type][`${object.type}_${object.parent.type}_uuid`] = {
+                        values: [""],
+                        required: true,
+                        type: "string"
+                    };
+                }
+            }
+
+            for (let property in object.properties) {
+                let property_escaped = escapeProperty(property);
+                let property_name = `${object.type}_${property_escaped}`;
+
+                if (!(property in type_to_properties[object.type])) {
+                    type_to_properties[object.type][property_name] = {
+                        values: [],
+                        required: false,
+                        type: "string"
+                    };
+                }
+                type_to_properties[object.type][property_name].values.push(object.properties[property as keyof Record]);
+            }
+        });
+
+        for (let type in type_to_properties) {
+            for (let property in type_to_properties[type]) {
+                type_to_properties[type][property].type = getType(type_to_properties[type][property].values);
+            }
+        }
+
+        return `class MDDataClass<Properties> {
+    data: Properties;
+    
+    constructor(properties: Properties) {
+        this.data = properties;
+    }
+}
+
+${Object.keys(type_to_properties)
+    .map(type => {
+        return `export namespace ${ucwords(type)} {
+    export interface Object {
+        ${Object.keys(type_to_properties[type])
+            .map(property => {
+                let property_name = property;
+                if (!type_to_properties[type][property].required) {
+                    property_name += "?";
+                }
+
+                return `${property_name}: ${type_to_properties[type][property].type}`;
+            })
+            .join(";\n\t\t")};
+    }
+
+    export class Instance extends MDDataClass<Object> {}`;
+    })
+    .join("\n}\n\n")}\n}
+`;
     }
     /* #endregion */
 }

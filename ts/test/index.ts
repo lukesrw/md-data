@@ -15,6 +15,8 @@ async function test() {
 
     let sql = await schema.toFile(join(__dirname, "test.sql"));
 
+    let ts = await schema.toFile(join(__dirname, "test.ts"));
+
     await writeFile(
         join(__dirname, "..", "..", "README.md"),
         readme
@@ -22,6 +24,7 @@ async function test() {
             .replace("<MD2>", md2)
             .replace("<JSON>", JSON.stringify(JSON.parse(json), null, 4))
             .replace("<SQL>", sql)
+            .replace("<TS>", ts)
     );
 }
 
