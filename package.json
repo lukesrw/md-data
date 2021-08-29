@@ -29,7 +29,9 @@
         "eslint-clean": "del .eslintrc.json && del .eslintignore",
         "node-clean": "del package-lock.json && rmdir /S /Q node_modules"
     },
-    "dependencies": {},
+    "dependencies": {
+        "is-number": "^7.0.0"
+    },
     "devDependencies": {
         "@types/node": "^16.7.5"
     }
