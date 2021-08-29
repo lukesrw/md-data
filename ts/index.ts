@@ -3,6 +3,8 @@ import { readFile, writeFile } from "fs/promises";
 import * as Generic from "./interfaces/Generic";
 import { ucwords } from "./lib/string";
 
+const isNumber = require("is-number");
+
 namespace is {
     export function date(value: any) {
         let date = new Date(value);
@@ -12,10 +14,6 @@ namespace is {
 
     export function numeric(value: any) {
         return !Number.isNaN(parseFloat(value));
-    }
-
-    export function number(value: any) {
-        return numeric(value) && !date(value) && !String(value).includes("-");
     }
 
     export function integer(value: any) {
@@ -116,8 +114,8 @@ function sqlFlatten(
             /* #region Collate objects with the same type to build table schema/inserts */
             if (object.type in type_to_table) {
                 type_to_table[object.type].raw = Object.assign(type_to_table[object.type].raw, object.properties);
-
                 type_to_table[object.type].insert.push(object);
+                type_to_table[object.type].parent = type_to_table[object.type].parent || object.parent;
             } else {
                 type_to_table[object.type] = {
                     raw: Object.assign({}, object.properties),
@@ -173,7 +171,7 @@ function sqlFlatten(
                     let marker_type = name_to_record[marker.strip(type_to_table[type].raw[property])][0].type;
 
                     columns.unshift({
-                        field: `\`${type}_${property}_uuid\``,
+                        field: `\`${type}_${property.replace(/\s/gu, "_")}_uuid\``,
                         property: property,
                         type: "TEXT"
                     });
@@ -182,7 +180,7 @@ function sqlFlatten(
                     );
                 } else {
                     let format = "TEXT";
-                    if (is.number(type_to_table[type].raw[property])) {
+                    if (isNumber(type_to_table[type].raw[property])) {
                         if (is.integer(type_to_table[type].raw[property])) {
                             format = "INTEGER";
                         } else {
@@ -191,7 +189,7 @@ function sqlFlatten(
                     }
 
                     columns.push({
-                        field: `\`${type}_${property}\``,
+                        field: `\`${type}_${property.replace(/\s/gu, "_")}\``,
                         property: property,
                         type: format
                     });
@@ -240,7 +238,7 @@ function sqlFlatten(
                                                 }"`;
                                             }
 
-                                            if (is.number(record.properties[column.property])) {
+                                            if (isNumber(record.properties[column.property])) {
                                                 return record.properties[column.property];
                                             }
 
@@ -374,19 +372,28 @@ export class MDData {
     /* #region To Functions */
     async toFile(location: string, unique_depth?: number) {
         let type = (location.split(".").pop() || "").toLowerCase();
+        let content;
+
         switch (type) {
             case "md":
-                return await writeFile(location, this.toMD());
+                content = this.toMD();
+                break;
 
             case "json":
-                return await writeFile(location, this.toJSON());
+                content = this.toJSON();
+                break;
 
             case "sql":
-                return await writeFile(location, this.toSQL(unique_depth || 1));
+                content = this.toSQL(unique_depth || 0);
+                break;
 
             default:
                 throw new Error("Unsupported format.");
         }
+
+        await writeFile(location, content);
+
+        return content;
     }
 
     toJSON() {
