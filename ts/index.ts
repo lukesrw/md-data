@@ -35,16 +35,11 @@ namespace marker {
     export function strip(string: string | string[]): string {
         if (Array.isArray(string)) {
             let marker = "";
-
             if (
                 string.some(item => {
-                    if (test(item)) {
-                        marker = item;
+                    marker = item;
 
-                        return true;
-                    }
-
-                    return false;
+                    return test(marker);
                 })
             ) {
                 return strip(marker);
@@ -53,9 +48,7 @@ namespace marker {
             return string[0];
         }
 
-        if (test(string)) {
-            return string.substr(1, string.length - 2);
-        }
+        if (test(string)) return string.substr(1, string.length - 2);
 
         return string;
     }
