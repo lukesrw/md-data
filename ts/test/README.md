@@ -99,7 +99,10 @@ async function main() {
     // to SQL string
     let sql = data.toSQL();
 
-    // to file (.md, .json, .sql)
+    // to TS string
+    let ts = data.toTS();
+
+    // to file (.md, .json, .sql, .ts)
     await data.toFile("./path/to/file.sql");
 }
 

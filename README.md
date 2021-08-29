@@ -99,7 +99,10 @@ async function main() {
     // to SQL string
     let sql = data.toSQL();
 
-    // to file (.md, .json, .sql)
+    // to TS string
+    let ts = data.toTS();
+
+    // to file (.md, .json, .sql, .ts)
     await data.toFile("./path/to/file.sql");
 }
 
@@ -196,33 +199,33 @@ main();
 
 ```sql
 CREATE TABLE IF NOT EXISTS `buildings` (
-	`building_uuid` TEXT,
-	`building_house_number` TEXT,
-	`building_street` TEXT,
-	`building_city` TEXT,
-	`building_postcode` TEXT,
+    `building_uuid` TEXT,
+    `building_house_number` TEXT,
+    `building_street` TEXT,
+    `building_city` TEXT,
+    `building_postcode` TEXT,
 
-	PRIMARY KEY (`building_uuid`)
+    PRIMARY KEY (`building_uuid`)
 );
 
 CREATE TABLE IF NOT EXISTS `occupants` (
-	`occupant_building_uuid` TEXT,
-	`occupant_uuid` TEXT,
-	`occupant_forename` TEXT,
-	`occupant_surname` TEXT,
+    `occupant_building_uuid` TEXT,
+    `occupant_uuid` TEXT,
+    `occupant_forename` TEXT,
+    `occupant_surname` TEXT,
 
-	PRIMARY KEY (`occupant_building_uuid`, `occupant_uuid`),
-	FOREIGN KEY (`occupant_building_uuid`) REFERENCES `buildings` (`building_uuid`)
+    PRIMARY KEY (`occupant_building_uuid`, `occupant_uuid`),
+    FOREIGN KEY (`occupant_building_uuid`) REFERENCES `buildings` (`building_uuid`)
 );
 
 INSERT INTO `buildings`
-	(`building_uuid`, `building_house_number`, `building_street`, `building_city`, `building_postcode`) VALUES
-	("6475c2c4-61c5-48e8-a02c-fb6022e439ce", "221b", "Baker Street", "London", "NW1 6XE");
+    (`building_uuid`, `building_house_number`, `building_street`, `building_city`, `building_postcode`) VALUES
+    ("483140d6-3036-48bf-83e8-fb3435c1ca38", "221b", "Baker Street", "London", "NW1 6XE");
 
 INSERT INTO `occupants`
-	(`occupant_building_uuid`, `occupant_uuid`, `occupant_forename`, `occupant_surname`) VALUES
-	("6475c2c4-61c5-48e8-a02c-fb6022e439ce", "f6335c8d-d798-42b4-9563-61d29a2fb813", "Sherlock", "Holmes"),
-	("6475c2c4-61c5-48e8-a02c-fb6022e439ce", "9e2aa5e6-fc6f-4ccd-9543-d163f22bb0cc", "John", "Watson");
+    (`occupant_building_uuid`, `occupant_uuid`, `occupant_forename`, `occupant_surname`) VALUES
+    ("483140d6-3036-48bf-83e8-fb3435c1ca38", "86d33184-6690-4af2-9b37-d03acc103965", "Sherlock", "Holmes"),
+    ("483140d6-3036-48bf-83e8-fb3435c1ca38", "ccfc9832-7ec1-4443-91c2-75a4251c58a4", "John", "Watson");
 ```
 
 ### Output: TS
@@ -239,10 +242,10 @@ class MDDataClass<Properties> {
 export namespace Building {
     export interface Object {
         building_uuid: string;
-		building_house_number?: string;
-		building_street?: string;
-		building_city?: string;
-		building_postcode?: string;
+        building_house_number?: string;
+        building_street?: string;
+        building_city?: string;
+        building_postcode?: string;
     }
 
     export class Instance extends MDDataClass<Object> {}
@@ -251,9 +254,9 @@ export namespace Building {
 export namespace Occupant {
     export interface Object {
         occupant_uuid: string;
-		occupant_building_uuid: string;
-		occupant_forename?: string;
-		occupant_surname?: string;
+        occupant_building_uuid: string;
+        occupant_forename?: string;
+        occupant_surname?: string;
     }
 
     export class Instance extends MDDataClass<Object> {}
