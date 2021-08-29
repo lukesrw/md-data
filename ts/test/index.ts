@@ -1,13 +1,13 @@
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
-import { MDData } from "..";
+import { MDDatabase } from "..";
 
 async function test() {
     let readme = await readFile(join(__dirname, "..", "..", "ts", "test", "README.md"), "utf-8");
 
     let md1 = await readFile(join(__dirname, "..", "..", "ts", "test", "test.md"), "utf-8");
 
-    let schema = MDData.fromMD(md1);
+    let schema = MDDatabase.fromMD(md1);
 
     let md2 = await schema.toFile(join(__dirname, "test (copy).md"));
 

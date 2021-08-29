@@ -1,4 +1,4 @@
-# MDData
+# MDDatabase
 
 ## Description
 
@@ -14,7 +14,7 @@ Currently only SQLite is fully supported, with support for MySQL being worked on
 
 ### Headings
 
-For MDData the format of Markdown headings is the following:
+For MDDatabase the format of Markdown headings is the following:
 
 ```md
 [Depth] [Name] ([Type])
@@ -30,7 +30,7 @@ Depth is used when greater than 1 to find and assign a parent (with foreign key 
 
 ### Properties
 
-For MDData the format of properties is the following, optional under each heading:
+For MDDatabase the format of properties is the following, optional under each heading:
 
 ```md
 -   Property Name: Property Value
@@ -42,7 +42,7 @@ For MDData the format of properties is the following, optional under each headin
 
 Name is used in order to track and refer to data-over-time from other records, however this relies on the name being unique. If the name is not unique this will cause collisions between multiple records, potentially combining their information.
 
-The `toSQL()` method takes a `unique_depth` argument (default: 0) in order to instruct MDData to force headings less than or equal to that depth to be unique no matter what (at the moment this has the downside of meaning they cannot be referenced).
+The `toSQL()` method takes a `unique_depth` argument (default: 0) in order to instruct MDDatabase to force headings less than or equal to that depth to be unique no matter what (at the moment this has the downside of meaning they cannot be referenced).
 
 #### Example
 
@@ -69,23 +69,23 @@ The ideal solution is to update the headings to be unique ("Pilot" instead of "E
 ### Code
 
 ```js
-const { MDData } = require("md-data");
+const { MDDatabase } = require("md-database");
 
 async function main() {
     /**
      * Step 1. Get data
      */
     // from JSON string
-    let data = new MDData("[{}, {}, ...]");
+    let data = new MDDatabase("[{}, {}, ...]");
 
     // from array
-    let data = new MDData([{}, {}, ...]);
+    let data = new MDDatabase([{}, {}, ...]);
 
     // from MD string
-    let data = MDData.fromMD("# heading ...");
+    let data = MDDatabase.fromMD("# heading ...");
 
     // from file (.md, .json)
-    let data = await MDData.fromFile("./path/to/file.md");
+    let data = await MDDatabase.fromFile("./path/to/file.md");
 
     /**
      * Step 2. Convert data
@@ -130,7 +130,6 @@ main();
 
 -   Forename: John
 -   Surname: Watson
-
 ```
 
 ### Output: Markdown
@@ -152,7 +151,6 @@ main();
 
 -   Forename: John
 -   Surname: Watson
-
 ```
 
 ### Output: JSON
@@ -231,9 +229,9 @@ INSERT INTO `occupants`
 ### Output: TS
 
 ```ts
-class MDDataClass<Properties> {
+class MDDatabaseClass<Properties> {
     data: Properties;
-    
+
     constructor(properties: Properties) {
         this.data = properties;
     }
@@ -248,7 +246,7 @@ export namespace Building {
         building_postcode?: string;
     }
 
-    export class Instance extends MDDataClass<Object> {}
+    export class Instance extends MDDatabaseClass<Object> {}
 }
 
 export namespace Occupant {
@@ -259,7 +257,6 @@ export namespace Occupant {
         occupant_surname?: string;
     }
 
-    export class Instance extends MDDataClass<Object> {}
+    export class Instance extends MDDatabaseClass<Object> {}
 }
-
 ```

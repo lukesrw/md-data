@@ -131,7 +131,7 @@ function flatten(objects: Record[] | Record, flat: Record[] = []) {
     return flat;
 }
 
-export class MDData {
+export class MDDatabase {
     data: Record[];
     md?: string;
     json: string;
@@ -153,10 +153,10 @@ export class MDData {
         let type = (location.split(".").pop() || "").toLowerCase();
         switch (type) {
             case "md":
-                return MDData.fromMD(file);
+                return MDDatabase.fromMD(file);
 
             case "json":
-                return new MDData(file);
+                return new MDDatabase(file);
 
             default:
                 throw new Error("Unsupported format.");
@@ -225,7 +225,7 @@ export class MDData {
             }
         });
 
-        return new MDData(feed.map(object => removeKeys(object, ["parent"])));
+        return new MDDatabase(feed.map(object => removeKeys(object, ["parent"])));
     }
     /* #endregion */
 
@@ -499,7 +499,7 @@ export class MDData {
             }
         }
 
-        return `class MDDataClass<Properties> {
+        return `class MDDatabaseClass<Properties> {
     data: Properties;
     
     constructor(properties: Properties) {
@@ -523,7 +523,7 @@ ${Object.keys(type_to_properties)
             .join(";\n        ")};
     }
 
-    export class Instance extends MDDataClass<Object> {}`;
+    export class Instance extends MDDatabaseClass<Object> {}`;
     })
     .join("\n}\n\n")}
 }

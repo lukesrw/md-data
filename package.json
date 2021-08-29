@@ -35,12 +35,12 @@
     "devDependencies": {
         "@types/node": "^16.7.5"
     },
-    "name": "md-data",
+    "name": "md-database",
     "description": "Middleware for producing SQL queries from Markdown",
     "version": "1.0.0",
     "repository": {
         "type": "git",
-        "url": "git+ssh://git@github.com/lukesrw/md-data.git"
+        "url": "git+ssh://git@github.com/lukesrw/md-database.git"
     },
     "keywords": [
         "md",
@@ -55,7 +55,7 @@
     "author": "Luke Wilson <lukesrw@gmail.com>",
     "license": "GPL-3.0",
     "bugs": {
-        "url": "https://github.com/lukesrw/md-data/issues"
+        "url": "https://github.com/lukesrw/md-database/issues"
     },
-    "homepage": "https://github.com/lukesrw/md-data#readme"
+    "homepage": "https://github.com/lukesrw/md-database#readme"
 }
