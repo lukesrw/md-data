@@ -165,7 +165,18 @@ export class MDDatabase {
     }
 
     /* #region From Functions */
-    static async fromFile(location: string) {
+    static async fromFile(location: string | string[]): Promise<MDDatabase> {
+        if (Array.isArray(location)) {
+            let records = await Promise.all<MDDatabase>(location.map(MDDatabase.fromFile));
+
+            return new MDDatabase(
+                Array.prototype.concat.apply(
+                    [],
+                    records.map(record => record.data)
+                )
+            );
+        }
+
         let file = await readFile(location, "utf-8");
 
         let type = (location.split(".").pop() || "").toLowerCase();
@@ -181,7 +192,16 @@ export class MDDatabase {
         }
     }
 
-    static fromMD(md: string) {
+    static fromMD(md: string | string[]) {
+        if (Array.isArray(md)) {
+            return new MDDatabase(
+                Array.prototype.concat.apply(
+                    [],
+                    md.map<MDDatabase>(MDDatabase.fromMD).map(data => data.data)
+                )
+            );
+        }
+
         let lines = md.split("\n");
         let feed: Record[] = [];
         let previous: Record | false = false;
@@ -247,6 +267,7 @@ export class MDDatabase {
     }
     /* #endregion */
 
+    /* #region Management Functions */
     buildMaps(unique_depth = 0) {
         let flat = flatten(this.data);
         let type_to_table: Generic.Object<{
@@ -414,6 +435,7 @@ export class MDDatabase {
             delete object.properties._parent;
         });
     }
+    /* #endregion */
 
     /* #region To Functions */
     async toFile(location: string, unique_depth?: number) {
