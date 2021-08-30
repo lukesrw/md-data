@@ -354,17 +354,20 @@ export class MDDatabase {
              */
             Object.keys(type_to_table[type].raw).forEach(property => {
                 if (marker.test(type_to_table[type].raw[property])) {
-                    let marker_type = name_to_record[marker.strip(type_to_table[type].raw[property])][0].type;
+                    let name = marker.strip(type_to_table[type].raw[property]);
+                    if (!(name in name_to_record && name_to_record[name].length)) {
+                        throw new Error(`Unable to find reference "${ucwords(name)}"`);
+                    }
 
                     columns.unshift({
-                        field: escape(`\`${type}_${property}_${marker_type}_uuid\``),
+                        field: escape(`\`${type}_${property}_${name_to_record[name][0].type}_uuid\``),
                         property: property,
                         type: "TEXT"
                     });
                     keys.push(
                         `FOREIGN KEY (${columns[columns.length - 1].field}) REFERENCES \`${plural(
-                            escape(marker_type)
-                        )}\` (\`${escape(marker_type)}_uuid\`)`
+                            escape(name_to_record[name][0].type)
+                        )}\` (\`${escape(name_to_record[name][0].type)}_uuid\`)`
                     );
                 } else {
                     let format = getType(type_to_table[type].raw[property], true);
@@ -422,9 +425,12 @@ export class MDDatabase {
                 .map(column => {
                     if (record.properties[column.property]) {
                         if (marker.test(record.properties[column.property])) {
-                            return `"${
-                                name_to_record[marker.strip(record.properties[column.property])][0].properties.uuid
-                            }"`;
+                            let name = marker.strip(record.properties[column.property]);
+                            if (!(name in name_to_record && name_to_record[name].length)) {
+                                throw new Error(`Unable to find reference "${ucwords(name)}"`);
+                            }
+
+                            return `"${name_to_record[name][0].properties.uuid}"`;
                         }
 
                         if (isNumber(record.properties[column.property])) {
