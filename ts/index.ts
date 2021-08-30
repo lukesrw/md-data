@@ -6,6 +6,11 @@ import { plural } from "pluralize";
 
 const isNumber = require("is-number");
 
+interface MDType {
+    sql: string;
+    js: string;
+}
+
 namespace is {
     export function date(value: any) {
         let date = new Date(value);
@@ -55,20 +60,32 @@ namespace marker {
     }
 }
 
-function getType(values: any[], for_database = false) {
+function getType(values: any[]): MDType {
     if (values.every(isNumber)) {
         if (values.length > 1 && values.every(is.boolean)) {
-            return for_database ? "INTEGER" : "boolean";
+            return {
+                sql: "INTEGER",
+                js: "boolean"
+            };
         }
 
-        if (for_database && values.every(is.integer)) {
-            return for_database ? "INTEGER" : "number";
+        if (values.every(is.integer)) {
+            return {
+                sql: "INTEGER",
+                js: "number"
+            };
         }
 
-        return for_database ? "REAL" : "number";
+        return {
+            sql: "REAL",
+            js: "number"
+        };
     }
 
-    return for_database ? "TEXT" : "string";
+    return {
+        sql: "TEXT",
+        js: "string"
+    };
 }
 
 function removeKeys(object: Record, keys: (keyof Record)[]) {
@@ -230,54 +247,16 @@ export class MDDatabase {
     }
     /* #endregion */
 
-    /* #region To Functions */
-    async toFile(location: string, unique_depth?: number) {
-        let type = (location.split(".").pop() || "").toLowerCase();
-        let content;
-
-        switch (type) {
-            case "md":
-                content = this.toMD();
-                break;
-
-            case "json":
-                content = this.toJSON();
-                break;
-
-            case "sql":
-                content = this.toSQL(unique_depth || 0);
-                break;
-
-            case "ts":
-                content = this.toTS();
-                break;
-
-            default:
-                throw new Error("Unsupported format.");
-        }
-
-        await writeFile(location, content);
-
-        return content;
-    }
-
-    toJSON() {
-        return this.json;
-    }
-
-    toMD() {
-        if (!this.md) {
-            this.md = this.data.map(mdFlatten).join("\n\n").trim() + "\n";
-        }
-
-        return this.md;
-    }
-
-    toSQL(unique_depth: number) {
+    buildMaps(unique_depth = 0) {
         let flat = flatten(this.data);
-        let schema: string[] = [];
-        let inserts: string[] = [];
         let type_to_table: Generic.Object<{
+            columns: {
+                field: string;
+                property: string;
+                required: boolean;
+                type: MDType;
+            }[];
+            keys: string[];
             raw: Generic.Object<any[]>;
             insert: Record[];
             parent?: Record | false;
@@ -296,7 +275,19 @@ export class MDDatabase {
                 type_to_table[type_escape] = {
                     raw: {},
                     insert: [],
-                    parent: false
+                    parent: false,
+                    columns: [
+                        {
+                            field: `${type_escape}_uuid`,
+                            property: "uuid",
+                            type: {
+                                sql: "TEXT",
+                                js: "string"
+                            },
+                            required: true
+                        }
+                    ],
+                    keys: []
                 };
             }
 
@@ -325,8 +316,6 @@ export class MDDatabase {
             );
 
             name_to_record[unique].push(object);
-
-            flat.push(object);
             /* #endregion */
         });
 
@@ -334,19 +323,11 @@ export class MDDatabase {
          * Looping through all object types to build table fields
          */
         Object.keys(type_to_table).forEach(type => {
-            let columns = [
-                {
-                    field: `\`${type}_uuid\``,
-                    property: "uuid",
-                    type: "TEXT"
-                }
-            ];
-            let keys = [];
             let parent = type_to_table[type].parent;
             if (parent) {
-                keys.push(`PRIMARY KEY (\`${type}_${parent.type}_uuid\`, \`${type}_uuid\`)`);
+                type_to_table[type].keys.push(`PRIMARY KEY (\`${type}_${parent.type}_uuid\`, \`${type}_uuid\`)`);
             } else {
-                keys.push(`PRIMARY KEY (\`${type}_uuid\`)`);
+                type_to_table[type].keys.push(`PRIMARY KEY (\`${type}_uuid\`)`);
             }
 
             /**
@@ -359,21 +340,26 @@ export class MDDatabase {
                         throw new Error(`Unable to find reference "${ucwords(name)}"`);
                     }
 
-                    columns.unshift({
-                        field: escape(`\`${type}_${property}_${name_to_record[name][0].type}_uuid\``),
+                    type_to_table[type].columns.unshift({
+                        field: escape(`${type}_${property}_${name_to_record[name][0].type}_uuid`),
                         property: property,
-                        type: "TEXT"
+                        type: {
+                            sql: "TEXT",
+                            js: "string"
+                        },
+                        required: false
                     });
-                    keys.push(
-                        `FOREIGN KEY (${columns[columns.length - 1].field}) REFERENCES \`${plural(
+                    type_to_table[type].keys.push(
+                        `FOREIGN KEY (\`${type_to_table[type].columns[0].field}\`) REFERENCES \`${plural(
                             escape(name_to_record[name][0].type)
                         )}\` (\`${escape(name_to_record[name][0].type)}_uuid\`)`
                     );
                 } else {
-                    let format = getType(type_to_table[type].raw[property], true);
+                    let format = getType(type_to_table[type].raw[property]);
 
-                    columns.push({
-                        field: `\`${type}_${escape(property)}\``,
+                    type_to_table[type].columns.push({
+                        required: false,
+                        field: `${type}_${escape(property)}`,
                         property: property,
                         type: format
                     });
@@ -389,12 +375,16 @@ export class MDDatabase {
                     }
                 });
 
-                columns.unshift({
-                    field: `\`${type}_${parent_type_escape}_uuid\``,
+                type_to_table[type].columns.unshift({
+                    field: `${type}_${parent_type_escape}_uuid`,
                     property: "_parent",
-                    type: "TEXT"
+                    type: {
+                        sql: "TEXT",
+                        js: "string"
+                    },
+                    required: true
                 });
-                keys.splice(
+                type_to_table[type].keys.splice(
                     1,
                     0,
                     `FOREIGN KEY (\`${type}_${parent_type_escape}_uuid\`) REFERENCES \`${plural(
@@ -402,26 +392,89 @@ export class MDDatabase {
                     )}\` (\`${parent_type_escape}_uuid\`)`
                 );
             }
+        });
 
-            schema.push(
-                `CREATE TABLE IF NOT EXISTS \`${plural(type)}\` (
-    ${columns
-        .map(column => {
-            return `${column.field} ${column.type}`;
-        })
-        .join(",\n    ")},
+        return {
+            flat,
+            type_to_table,
+            name_to_record
+        };
+    }
 
-    ${keys.join(",\n    ")}
-);`
-            );
+    cleanFlat(flat: Record[]) {
+        /**
+         * Delete properties to prevent circular references
+         */
+        flat.forEach(object => {
+            if (object.parent) {
+                delete object.parent;
+            }
 
-            if (type_to_table[type].insert.length) {
-                inserts.push(
-                    `INSERT INTO \`${plural(type)}\`
-    (${columns.map(column => column.field).join(", ")}) VALUES
+            delete object.properties.uuid;
+            delete object.properties._parent;
+        });
+    }
+
+    /* #region To Functions */
+    async toFile(location: string, unique_depth?: number) {
+        let type = (location.split(".").pop() || "").toLowerCase();
+        let content;
+
+        switch (type) {
+            case "md":
+                content = this.toMD();
+                break;
+
+            case "json":
+                content = this.toJSON();
+                break;
+
+            case "sql":
+                content = this.toSQL(unique_depth);
+                break;
+
+            case "ts":
+                content = this.toTS();
+                break;
+
+            default:
+                throw new Error("Unsupported format.");
+        }
+
+        await writeFile(location, content);
+
+        return content;
+    }
+
+    toJSON() {
+        return this.json;
+    }
+
+    toMD() {
+        if (!this.md) {
+            this.md = this.data.map(mdFlatten).join("\n\n").trim() + "\n";
+        }
+
+        return this.md;
+    }
+
+    toSQL(unique_depth = 0) {
+        let { flat, type_to_table, name_to_record } = this.buildMaps(unique_depth);
+        let sql = Object.keys(type_to_table)
+            .map(type => {
+                return `CREATE TABLE IF NOT EXISTS \`${plural(type)}\` (
+    ${type_to_table[type].columns.map(column => `\`${column.field}\` ${column.type.sql}`).join(",\n    ")},
+
+    ${type_to_table[type].keys.join(",\n    ")}
+);`;
+            })
+            .concat(
+                Object.keys(type_to_table).map(type => {
+                    return `INSERT INTO \`${plural(type)}\`
+    (${type_to_table[type].columns.map(column => `\`${column.field}\``).join(", ")}) VALUES
     ${type_to_table[type].insert
         .map(record => {
-            return `(${columns
+            return `(${type_to_table[type].columns
                 .map(column => {
                     if (record.properties[column.property]) {
                         if (marker.test(record.properties[column.property])) {
@@ -444,78 +497,20 @@ export class MDDatabase {
                 })
                 .join(", ")})`;
         })
-        .join(",\n    ")};`
-                );
-            }
-        });
+        .join(",\n    ")};`;
+                })
+            )
+            .join("\n\n");
 
-        /**
-         * Delete properties to prevent circular references
-         */
-        flat.forEach(object => {
-            if (object.parent) {
-                delete object.parent;
-            }
+        this.cleanFlat(flat);
 
-            delete object.properties.uuid;
-            delete object.properties._parent;
-        });
-
-        return schema.concat(inserts).join("\n\n");
+        return sql;
     }
 
     toTS() {
-        let objects = flatten(this.data);
-        let type_to_properties: Generic.Object<
-            Generic.Object<{
-                values: any[];
-                required: boolean;
-                type: string;
-            }>
-        > = {};
+        let { flat, type_to_table } = this.buildMaps();
 
-        objects.forEach(object => {
-            let type_escape = escape(object.type);
-            if (!(type_escape in type_to_properties)) {
-                type_to_properties[type_escape] = {
-                    [`${type_escape}_uuid`]: {
-                        values: [""],
-                        required: true,
-                        type: "string"
-                    }
-                };
-
-                if (object.parent) {
-                    type_to_properties[type_escape][`${type_escape}_${object.parent.type}_uuid`] = {
-                        values: [""],
-                        required: true,
-                        type: "string"
-                    };
-                }
-            }
-
-            for (let property in object.properties) {
-                let property_escaped = escape(property);
-                let property_name = `${type_escape}_${property_escaped}`;
-
-                if (!(property in type_to_properties[type_escape])) {
-                    type_to_properties[type_escape][property_name] = {
-                        values: [],
-                        required: false,
-                        type: "string"
-                    };
-                }
-                type_to_properties[type_escape][property_name].values.push(object.properties[property as keyof Record]);
-            }
-        });
-
-        for (let type in type_to_properties) {
-            for (let property in type_to_properties[type]) {
-                type_to_properties[type][property].type = getType(type_to_properties[type][property].values);
-            }
-        }
-
-        return `class MDDatabaseClass<Properties> {
+        let ts = `class MDDatabaseClass<Properties> {
     data: Properties;
     
     constructor(properties: Properties) {
@@ -523,19 +518,12 @@ export class MDDatabase {
     }
 }
 
-${Object.keys(type_to_properties)
+${Object.keys(type_to_table)
     .map(type => {
         return `export namespace ${ucwords(type.split("_").join(" ")).split(" ").join("")} {
     export interface Object {
-        ${Object.keys(type_to_properties[type])
-            .map(property => {
-                let property_name = property;
-                if (!type_to_properties[type][property].required) {
-                    property_name += "?";
-                }
-
-                return `${property_name}: ${type_to_properties[type][property].type}`;
-            })
+        ${type_to_table[type].columns
+            .map(column => `${column.field + (column.required ? "" : "?")}: ${column.type.js}`)
             .join(";\n        ")};
     }
 
@@ -544,6 +532,10 @@ ${Object.keys(type_to_properties)
     .join("\n}\n\n")}
 }
 `;
+
+        this.cleanFlat(flat);
+
+        return ts;
     }
     /* #endregion */
 }
