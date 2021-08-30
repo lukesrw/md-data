@@ -81,7 +81,7 @@ function removeKeys(object: Record, keys: (keyof Record)[]) {
 }
 
 function escape(name: string) {
-    return name.replace(/\s/gu, "_");
+    return name.replace(/\s|!|"|%|\^|&|\*|\(|\)|\[|\{|\]|\}|;|:|'|@|#|~|<|>|\.|\?|\/|\\|\||`|-|\+|=/gu, "_");
 }
 
 function mdFlatten(object: Record): string {
