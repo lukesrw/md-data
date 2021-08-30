@@ -483,13 +483,19 @@ export class MDDatabase {
     toSQL(unique_depth = 0) {
         let { flat, type_to_table, name_to_record } = this.buildMaps(unique_depth);
         let sql = Object.keys(type_to_table)
+            .reverse()
             .map(type => {
-                return `CREATE TABLE IF NOT EXISTS \`${plural(type)}\` (
+                return `DROP TABLE IF EXISTS \`${plural(type)}\`;`;
+            })
+            .concat(
+                Object.keys(type_to_table).map(type => {
+                    return `CREATE TABLE IF NOT EXISTS \`${plural(type)}\` (
     ${type_to_table[type].columns.map(column => `\`${column.field}\` ${column.type.sql}`).join(",\n    ")},
 
     ${type_to_table[type].keys.join(",\n    ")}
 );`;
-            })
+                })
+            )
             .concat(
                 Object.keys(type_to_table).map(type => {
                     return `INSERT INTO \`${plural(type)}\`
