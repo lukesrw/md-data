@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { readFile, writeFile } from "fs/promises";
 import * as Generic from "./interfaces/Generic";
 import { ucwords } from "./lib/string";
+import { plural } from "pluralize";
 
 const isNumber = require("is-number");
 
@@ -361,9 +362,9 @@ export class MDDatabase {
                         type: "TEXT"
                     });
                     keys.push(
-                        `FOREIGN KEY (${columns[columns.length - 1].field}) REFERENCES \`${escape(
-                            marker_type
-                        )}s\` (\`${escape(marker_type)}_uuid\`)`
+                        `FOREIGN KEY (${columns[columns.length - 1].field}) REFERENCES \`${plural(
+                            escape(marker_type)
+                        )}\` (\`${escape(marker_type)}_uuid\`)`
                     );
                 } else {
                     let format = getType(type_to_table[type].raw[property], true);
@@ -393,12 +394,14 @@ export class MDDatabase {
                 keys.splice(
                     1,
                     0,
-                    `FOREIGN KEY (\`${type}_${parent_type_escape}_uuid\`) REFERENCES \`${parent_type_escape}s\` (\`${parent_type_escape}_uuid\`)`
+                    `FOREIGN KEY (\`${type}_${parent_type_escape}_uuid\`) REFERENCES \`${plural(
+                        parent_type_escape
+                    )}\` (\`${parent_type_escape}_uuid\`)`
                 );
             }
 
             schema.push(
-                `CREATE TABLE IF NOT EXISTS \`${type}s\` (
+                `CREATE TABLE IF NOT EXISTS \`${plural(type)}\` (
     ${columns
         .map(column => {
             return `${column.field} ${column.type}`;
@@ -411,7 +414,7 @@ export class MDDatabase {
 
             if (type_to_table[type].insert.length) {
                 inserts.push(
-                    `INSERT INTO \`${type}s\`
+                    `INSERT INTO \`${plural(type)}\`
     (${columns.map(column => column.field).join(", ")}) VALUES
     ${type_to_table[type].insert
         .map(record => {

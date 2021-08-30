@@ -30,10 +30,12 @@
         "node-clean": "del package-lock.json && rmdir /S /Q node_modules"
     },
     "dependencies": {
-        "is-number": "^7.0.0"
+        "is-number": "^7.0.0",
+        "pluralize": "^8.0.0"
     },
     "devDependencies": {
-        "@types/node": "^16.7.5"
+        "@types/node": "^16.7.5",
+        "@types/pluralize": "0.0.29"
     },
     "name": "md-database",
     "description": "Middleware for producing SQL queries from Markdown",
