@@ -80,8 +80,8 @@ function removeKeys(object: Record, keys: (keyof Record)[]) {
     return object;
 }
 
-function escapeProperty(name: string) {
-    return name.replace(/\s/gu, "_");
+function escape(name: string) {
+    return name.replace(/\s|!|"|%|\^|&|\*|\(|\)|\[|\{|\]|\}|;|:|'|@|#|~|<|>|\.|\?|\/|\\|\||`|-|\+|=/gu, "_");
 }
 
 function mdFlatten(object: Record): string {
@@ -288,23 +288,25 @@ export class MDDatabase {
          * Looping through all objects
          */
         flat.forEach((object, object_i) => {
+            let type_escape = escape(object.type);
+
             /* #region Collate objects with the same type to build table schema/inserts */
-            if (!(object.type in type_to_table)) {
-                type_to_table[object.type] = {
+            if (!(type_escape in type_to_table)) {
+                type_to_table[type_escape] = {
                     raw: {},
                     insert: [],
                     parent: false
                 };
             }
 
-            type_to_table[object.type].insert.push(object);
-            type_to_table[object.type].parent = type_to_table[object.type].parent || object.parent;
+            type_to_table[type_escape].insert.push(object);
+            type_to_table[type_escape].parent = type_to_table[type_escape].parent || object.parent;
 
             for (let property in object.properties) {
-                if (!(property in type_to_table[object.type].raw)) {
-                    type_to_table[object.type].raw[property] = [];
+                if (!(property in type_to_table[type_escape].raw)) {
+                    type_to_table[type_escape].raw[property] = [];
                 }
-                type_to_table[object.type].raw[property].push(object.properties[property]);
+                type_to_table[type_escape].raw[property].push(object.properties[property]);
             }
             /* #endregion */
 
@@ -354,18 +356,20 @@ export class MDDatabase {
                     let marker_type = name_to_record[marker.strip(type_to_table[type].raw[property])][0].type;
 
                     columns.unshift({
-                        field: `\`${type}_${escapeProperty(property)}_uuid\``,
+                        field: escape(`\`${type}_${property}_${marker_type}_uuid\``),
                         property: property,
                         type: "TEXT"
                     });
                     keys.push(
-                        `FOREIGN KEY (\`${type}_${property}_uuid\`) REFERENCES \`${marker_type}s\` (\`${marker_type}_uuid\`)`
+                        `FOREIGN KEY (${columns[columns.length - 1].field}) REFERENCES \`${escape(
+                            marker_type
+                        )}s\` (\`${escape(marker_type)}_uuid\`)`
                     );
                 } else {
                     let format = getType(type_to_table[type].raw[property], true);
 
                     columns.push({
-                        field: `\`${type}_${escapeProperty(property)}\``,
+                        field: `\`${type}_${escape(property)}\``,
                         property: property,
                         type: format
                     });
@@ -373,6 +377,8 @@ export class MDDatabase {
             });
 
             if (parent) {
+                let parent_type_escape = escape(parent.type);
+
                 type_to_table[type].insert.forEach(object => {
                     if (object.parent) {
                         object.properties._parent = object.parent.properties.uuid;
@@ -380,14 +386,14 @@ export class MDDatabase {
                 });
 
                 columns.unshift({
-                    field: `\`${type}_${parent.type}_uuid\``,
+                    field: `\`${type}_${parent_type_escape}_uuid\``,
                     property: "_parent",
                     type: "TEXT"
                 });
                 keys.splice(
                     1,
                     0,
-                    `FOREIGN KEY (\`${type}_${parent.type}_uuid\`) REFERENCES \`${parent.type}s\` (\`${parent.type}_uuid\`)`
+                    `FOREIGN KEY (\`${type}_${parent_type_escape}_uuid\`) REFERENCES \`${parent_type_escape}s\` (\`${parent_type_escape}_uuid\`)`
                 );
             }
 
@@ -460,9 +466,10 @@ export class MDDatabase {
         > = {};
 
         objects.forEach(object => {
-            if (!(object.type in type_to_properties)) {
-                type_to_properties[object.type] = {
-                    [`${object.type}_uuid`]: {
+            let type_escape = escape(object.type);
+            if (!(type_escape in type_to_properties)) {
+                type_to_properties[type_escape] = {
+                    [`${type_escape}_uuid`]: {
                         values: [""],
                         required: true,
                         type: "string"
@@ -470,7 +477,7 @@ export class MDDatabase {
                 };
 
                 if (object.parent) {
-                    type_to_properties[object.type][`${object.type}_${object.parent.type}_uuid`] = {
+                    type_to_properties[type_escape][`${type_escape}_${object.parent.type}_uuid`] = {
                         values: [""],
                         required: true,
                         type: "string"
@@ -479,17 +486,17 @@ export class MDDatabase {
             }
 
             for (let property in object.properties) {
-                let property_escaped = escapeProperty(property);
-                let property_name = `${object.type}_${property_escaped}`;
+                let property_escaped = escape(property);
+                let property_name = `${type_escape}_${property_escaped}`;
 
-                if (!(property in type_to_properties[object.type])) {
-                    type_to_properties[object.type][property_name] = {
+                if (!(property in type_to_properties[type_escape])) {
+                    type_to_properties[type_escape][property_name] = {
                         values: [],
                         required: false,
                         type: "string"
                     };
                 }
-                type_to_properties[object.type][property_name].values.push(object.properties[property as keyof Record]);
+                type_to_properties[type_escape][property_name].values.push(object.properties[property as keyof Record]);
             }
         });
 
@@ -509,7 +516,7 @@ export class MDDatabase {
 
 ${Object.keys(type_to_properties)
     .map(type => {
-        return `export namespace ${ucwords(type)} {
+        return `export namespace ${ucwords(type.split("_").join(" ")).split(" ").join("")} {
     export interface Object {
         ${Object.keys(type_to_properties[type])
             .map(property => {
