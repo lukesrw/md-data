@@ -11,6 +11,10 @@ interface MDType {
     js: string;
 }
 
+interface MDDatabaseOptions {
+    unique_depth: number;
+}
+
 namespace is {
     export function date(value: any) {
         let date = new Date(value);
@@ -268,7 +272,16 @@ export class MDDatabase {
     /* #endregion */
 
     /* #region Management Functions */
-    buildMaps(unique_depth = 0) {
+    getOptions(options: Partial<MDDatabaseOptions> = {}): MDDatabaseOptions {
+        return Object.assign(
+            {
+                unique_depth: 0
+            },
+            options || {}
+        );
+    }
+
+    buildMaps(in_options: Partial<MDDatabaseOptions> = {}) {
         let flat = flatten(this.data);
         let type_to_table: Generic.Object<{
             columns: {
@@ -284,6 +297,7 @@ export class MDDatabase {
         }> = {};
         let name_to_record: Generic.Object<Record[]> = {};
         let name_to_properties: Generic.Object = {};
+        let options = this.getOptions(in_options);
 
         /**
          * Looping through all objects
@@ -324,7 +338,7 @@ export class MDDatabase {
             /* #endregion */
 
             /* #region Collate objects with the same name to merge properties and UUID */
-            let unique = object.name + (object.depth <= unique_depth ? `_${object_i}` : "");
+            let unique = object.name + (object.depth <= options.unique_depth ? `_${object_i}` : "");
             if (!(unique in name_to_record)) {
                 name_to_record[unique] = [];
                 name_to_properties[unique] = {
@@ -438,7 +452,7 @@ export class MDDatabase {
     /* #endregion */
 
     /* #region To Functions */
-    async toFile(location: string, unique_depth?: number) {
+    async toFile(location: string, options: Partial<MDDatabaseOptions> = {}) {
         let type = (location.split(".").pop() || "").toLowerCase();
         let content;
 
@@ -452,7 +466,7 @@ export class MDDatabase {
                 break;
 
             case "sql":
-                content = this.toSQL(unique_depth);
+                content = this.toSQL(options);
                 break;
 
             case "ts":
@@ -480,8 +494,10 @@ export class MDDatabase {
         return this.md;
     }
 
-    toSQL(unique_depth = 0) {
-        let { flat, type_to_table, name_to_record } = this.buildMaps(unique_depth);
+    toSQL(options: Partial<MDDatabaseOptions> = {}) {
+        options = this.getOptions(options);
+
+        let { flat, type_to_table, name_to_record } = this.buildMaps(options);
         let sql = Object.keys(type_to_table)
             .reverse()
             .map(type => {
