@@ -294,66 +294,75 @@ export class MDDatabase {
     /* #endregion */
 
     /* #region Management Functions */
-    getOptions(options: Partial<MDDatabaseOptions> = {}): MDDatabaseOptions {
-        let final_options = Object.assign(
+    getOptions(in_options: number | Partial<MDDatabaseOptions> = {}): MDDatabaseOptions {
+        /**
+         * backwards compatability for unique_depth argument
+         */
+        if (typeof in_options === "number") {
+            in_options = {
+                unique_depth: in_options
+            };
+        }
+
+        let options = Object.assign(
             {
                 unique_depth: 0,
                 type: {}
             },
-            options || {}
+            in_options || {}
         );
 
-        if (typeof final_options.unique_depth !== "number") {
-            final_options.unique_depth = 0;
+        if (typeof options.unique_depth !== "number") {
+            options.unique_depth = 0;
         }
 
-        if (typeof final_options.type !== "object") {
-            final_options.type = {};
+        if (typeof options.type !== "object") {
+            options.type = {};
         }
 
-        for (let type in final_options.type) {
-            final_options.type[type] = Object.assign(
+        for (let type in options.type) {
+            options.type[type] = Object.assign(
                 {
                     unique: [],
                     check: [],
                     field: {}
                 },
-                final_options.type[type]
+                options.type[type]
             );
 
-            if (!Array.isArray(final_options.type[type].unique)) {
-                final_options.type[type].unique = [];
+            if (!Array.isArray(options.type[type].unique)) {
+                options.type[type].unique = [];
             }
 
-            if (!Array.isArray(final_options.type[type].check)) {
-                final_options.type[type].check = [];
+            if (!Array.isArray(options.type[type].check)) {
+                options.type[type].check = [];
             }
 
-            if (typeof final_options.type[type].field !== "object") {
-                final_options.type[type].field = {};
+            if (typeof options.type[type].field !== "object") {
+                options.type[type].field = {};
             }
 
-            for (let field in final_options.type[type].field) {
-                final_options.type[type].field[field] = Object.assign(
+            for (let field in options.type[type].field) {
+                options.type[type].field[field] = Object.assign(
                     {
                         not_null: false,
                         unique: false,
                         check: [],
                         default: false
                     },
-                    final_options.type[type].field[field]
+                    options.type[type].field[field]
                 );
 
-                if (!Array.isArray(final_options.type[type].field[field].check)) {
-                    final_options.type[type].field[field].check = [];
+                if (!Array.isArray(options.type[type].field[field].check)) {
+                    options.type[type].field[field].check = [];
                 }
             }
         }
 
-        return final_options;
+        return options;
     }
 
-    buildMaps(in_options: Partial<MDDatabaseOptions> = {}) {
+    buildMaps(in_options: number | Partial<MDDatabaseOptions> = {}) {
         let flat = flatten(this.data);
         let type_to_table: Generic.Object<{
             columns: {
@@ -550,7 +559,7 @@ export class MDDatabase {
     /* #endregion */
 
     /* #region To Functions */
-    async toFile(location: string, options: Partial<MDDatabaseOptions> = {}) {
+    async toFile(location: string, in_options: number | Partial<MDDatabaseOptions> = {}) {
         let type = (location.split(".").pop() || "").toLowerCase();
         let content;
 
@@ -564,7 +573,7 @@ export class MDDatabase {
                 break;
 
             case "sql":
-                content = this.toSQL(options);
+                content = this.toSQL(in_options);
                 break;
 
             case "ts":
@@ -592,7 +601,7 @@ export class MDDatabase {
         return this.md;
     }
 
-    toSQL(in_options: Partial<MDDatabaseOptions> = {}) {
+    toSQL(in_options: number | Partial<MDDatabaseOptions> = {}) {
         let options = this.getOptions(in_options);
         let { flat, type_to_table, name_to_record } = this.buildMaps(in_options);
 
