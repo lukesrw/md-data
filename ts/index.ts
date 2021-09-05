@@ -11,6 +11,32 @@ interface MDType {
     js: string;
 }
 
+export enum MDDatabaseConflict {
+    ROLLBACK,
+    ABORT,
+    FAIL,
+    IGNORE,
+    REPLACE
+}
+
+interface MDDatabaseOptions {
+    unique_depth: number;
+    type: Generic.Object<{
+        check: string[];
+        unique: {
+            fields: string[];
+            conflict: MDDatabaseConflict;
+        }[];
+
+        field: Generic.Object<{
+            not_null: false | MDDatabaseConflict;
+            check: string[];
+            unique: false | MDDatabaseConflict;
+            default: false | string;
+        }>;
+    }>;
+}
+
 namespace is {
     export function date(value: any) {
         let date = new Date(value);
@@ -157,11 +183,11 @@ export class MDDatabase {
     constructor(data: string | Record[]) {
         if (Array.isArray(data)) {
             this.data = data;
-            this.json = JSON.stringify(this.data);
         } else {
-            this.json = data;
             this.data = JSON.parse(data);
         }
+
+        this.json = JSON.stringify(data, null, 4);
     }
 
     /* #region From Functions */
@@ -268,7 +294,75 @@ export class MDDatabase {
     /* #endregion */
 
     /* #region Management Functions */
-    buildMaps(unique_depth = 0) {
+    getOptions(in_options: number | Partial<MDDatabaseOptions> = {}): MDDatabaseOptions {
+        /**
+         * backwards compatability for unique_depth argument
+         */
+        if (typeof in_options === "number") {
+            in_options = {
+                unique_depth: in_options
+            };
+        }
+
+        let options = Object.assign(
+            {
+                unique_depth: 0,
+                type: {}
+            },
+            in_options || {}
+        );
+
+        if (typeof options.unique_depth !== "number") {
+            options.unique_depth = 0;
+        }
+
+        if (typeof options.type !== "object") {
+            options.type = {};
+        }
+
+        for (let type in options.type) {
+            options.type[type] = Object.assign(
+                {
+                    unique: [],
+                    check: [],
+                    field: {}
+                },
+                options.type[type]
+            );
+
+            if (!Array.isArray(options.type[type].unique)) {
+                options.type[type].unique = [];
+            }
+
+            if (!Array.isArray(options.type[type].check)) {
+                options.type[type].check = [];
+            }
+
+            if (typeof options.type[type].field !== "object") {
+                options.type[type].field = {};
+            }
+
+            for (let field in options.type[type].field) {
+                options.type[type].field[field] = Object.assign(
+                    {
+                        not_null: false,
+                        unique: false,
+                        check: [],
+                        default: false
+                    },
+                    options.type[type].field[field]
+                );
+
+                if (!Array.isArray(options.type[type].field[field].check)) {
+                    options.type[type].field[field].check = [];
+                }
+            }
+        }
+
+        return options;
+    }
+
+    buildMaps(in_options: number | Partial<MDDatabaseOptions> = {}) {
         let flat = flatten(this.data);
         let type_to_table: Generic.Object<{
             columns: {
@@ -284,6 +378,7 @@ export class MDDatabase {
         }> = {};
         let name_to_record: Generic.Object<Record[]> = {};
         let name_to_properties: Generic.Object = {};
+        let options = this.getOptions(in_options);
 
         /**
          * Looping through all objects
@@ -324,7 +419,7 @@ export class MDDatabase {
             /* #endregion */
 
             /* #region Collate objects with the same name to merge properties and UUID */
-            let unique = object.name + (object.depth <= unique_depth ? `_${object_i}` : "");
+            let unique = object.name + (object.depth <= options.unique_depth ? `_${object_i}` : "");
             if (!(unique in name_to_record)) {
                 name_to_record[unique] = [];
                 name_to_properties[unique] = {
@@ -413,6 +508,32 @@ export class MDDatabase {
                     )}\` (\`${parent_type_escape}_uuid\`)`
                 );
             }
+
+            if (type in options.type) {
+                options.type[type].check.forEach(check => {
+                    type_to_table[type].keys.push(`CHECK (${check})`);
+                });
+
+                options.type[type].unique.forEach(unique => {
+                    unique.fields = unique.fields.map(field => {
+                        if (
+                            !type_to_table[type].columns.some(column => {
+                                if (field === column.property) field = column.field;
+
+                                return field === column.field;
+                            })
+                        ) {
+                            throw new Error(`Unknown field: "${field}"`);
+                        }
+
+                        return field;
+                    });
+
+                    type_to_table[type].keys.push(
+                        `UNIQUE (\`${unique.fields.join("`, `")}\`) ON CONFLICT ${MDDatabaseConflict[unique.conflict]}`
+                    );
+                });
+            }
         });
 
         return {
@@ -438,7 +559,7 @@ export class MDDatabase {
     /* #endregion */
 
     /* #region To Functions */
-    async toFile(location: string, unique_depth?: number) {
+    async toFile(location: string, in_options: number | Partial<MDDatabaseOptions> = {}) {
         let type = (location.split(".").pop() || "").toLowerCase();
         let content;
 
@@ -452,7 +573,7 @@ export class MDDatabase {
                 break;
 
             case "sql":
-                content = this.toSQL(unique_depth);
+                content = this.toSQL(in_options);
                 break;
 
             case "ts":
@@ -480,8 +601,10 @@ export class MDDatabase {
         return this.md;
     }
 
-    toSQL(unique_depth = 0) {
-        let { flat, type_to_table, name_to_record } = this.buildMaps(unique_depth);
+    toSQL(in_options: number | Partial<MDDatabaseOptions> = {}) {
+        let options = this.getOptions(in_options);
+        let { flat, type_to_table, name_to_record } = this.buildMaps(in_options);
+
         let sql = Object.keys(type_to_table)
             .reverse()
             .map(type => {
@@ -490,7 +613,25 @@ export class MDDatabase {
             .concat(
                 Object.keys(type_to_table).map(type => {
                     return `CREATE TABLE IF NOT EXISTS \`${plural(type)}\` (
-    ${type_to_table[type].columns.map(column => `\`${column.field}\` ${column.type.sql}`).join(",\n    ")},
+    ${type_to_table[type].columns
+        .map(column => {
+            let field = `\`${column.field}\` ${column.type.sql}`;
+
+            if (type in options.type && column.property in options.type[type].field) {
+                let { not_null, unique, check, default: _default } = options.type[type].field[column.property];
+
+                if (not_null) field += ` NOT NULL ON CONFLICT ${MDDatabaseConflict[not_null]}`;
+
+                if (check.length) field += ` CHECK (${check.join(") CHECK (")})`;
+
+                if (unique) field += ` UNIQUE ON CONFLICT ${MDDatabaseConflict[unique]}`;
+
+                if (_default) field += ` DEFAULT ${_default}`;
+            }
+
+            return field;
+        })
+        .join(",\n    ")},
 
     ${type_to_table[type].keys.join(",\n    ")}
 );`;
