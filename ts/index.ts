@@ -11,9 +11,30 @@ interface MDType {
     js: string;
 }
 
+export enum MDDatabaseConflict {
+    ROLLBACK,
+    ABORT,
+    FAIL,
+    IGNORE,
+    REPLACE
+}
+
 interface MDDatabaseOptions {
     unique_depth: number;
-    table: Generic.Object<{}>;
+    type: Generic.Object<{
+        check: string[];
+        unique: {
+            fields: string[];
+            conflict: MDDatabaseConflict;
+        }[];
+
+        field: Generic.Object<{
+            not_null: false | MDDatabaseConflict;
+            check: string[];
+            unique: false | MDDatabaseConflict;
+            default: false | string;
+        }>;
+    }>;
 }
 
 namespace is {
@@ -162,11 +183,11 @@ export class MDDatabase {
     constructor(data: string | Record[]) {
         if (Array.isArray(data)) {
             this.data = data;
-            this.json = JSON.stringify(this.data);
         } else {
-            this.json = data;
             this.data = JSON.parse(data);
         }
+
+        this.json = JSON.stringify(data, null, 4);
     }
 
     /* #region From Functions */
@@ -277,14 +298,55 @@ export class MDDatabase {
         let final_options = Object.assign(
             {
                 unique_depth: 0,
-                table: {}
+                type: {}
             },
             options || {}
         );
 
-        if ("table" in options) {
-            for (let table in options.table) {
-                final_options.table[table] = Object.assign({}, options.table[table]);
+        if (typeof final_options.unique_depth !== "number") {
+            final_options.unique_depth = 0;
+        }
+
+        if (typeof final_options.type !== "object") {
+            final_options.type = {};
+        }
+
+        for (let type in final_options.type) {
+            final_options.type[type] = Object.assign(
+                {
+                    unique: [],
+                    check: [],
+                    field: {}
+                },
+                final_options.type[type]
+            );
+
+            if (!Array.isArray(final_options.type[type].unique)) {
+                final_options.type[type].unique = [];
+            }
+
+            if (!Array.isArray(final_options.type[type].check)) {
+                final_options.type[type].check = [];
+            }
+
+            if (typeof final_options.type[type].field !== "object") {
+                final_options.type[type].field = {};
+            }
+
+            for (let field in final_options.type[type].field) {
+                final_options.type[type].field[field] = Object.assign(
+                    {
+                        not_null: false,
+                        unique: false,
+                        check: [],
+                        default: false
+                    },
+                    final_options.type[type].field[field]
+                );
+
+                if (!Array.isArray(final_options.type[type].field[field].check)) {
+                    final_options.type[type].field[field].check = [];
+                }
             }
         }
 
@@ -437,6 +499,32 @@ export class MDDatabase {
                     )}\` (\`${parent_type_escape}_uuid\`)`
                 );
             }
+
+            if (type in options.type) {
+                options.type[type].check.forEach(check => {
+                    type_to_table[type].keys.push(`CHECK (${check})`);
+                });
+
+                options.type[type].unique.forEach(unique => {
+                    unique.fields = unique.fields.map(field => {
+                        if (
+                            !type_to_table[type].columns.some(column => {
+                                if (field === column.property) field = column.field;
+
+                                return field === column.field;
+                            })
+                        ) {
+                            throw new Error(`Unknown field: "${field}"`);
+                        }
+
+                        return field;
+                    });
+
+                    type_to_table[type].keys.push(
+                        `UNIQUE (\`${unique.fields.join("`, `")}\`) ON CONFLICT ${MDDatabaseConflict[unique.conflict]}`
+                    );
+                });
+            }
         });
 
         return {
@@ -504,10 +592,10 @@ export class MDDatabase {
         return this.md;
     }
 
-    toSQL(options: Partial<MDDatabaseOptions> = {}) {
-        options = this.getOptions(options);
+    toSQL(in_options: Partial<MDDatabaseOptions> = {}) {
+        let options = this.getOptions(in_options);
+        let { flat, type_to_table, name_to_record } = this.buildMaps(in_options);
 
-        let { flat, type_to_table, name_to_record } = this.buildMaps(options);
         let sql = Object.keys(type_to_table)
             .reverse()
             .map(type => {
@@ -516,7 +604,25 @@ export class MDDatabase {
             .concat(
                 Object.keys(type_to_table).map(type => {
                     return `CREATE TABLE IF NOT EXISTS \`${plural(type)}\` (
-    ${type_to_table[type].columns.map(column => `\`${column.field}\` ${column.type.sql}`).join(",\n    ")},
+    ${type_to_table[type].columns
+        .map(column => {
+            let field = `\`${column.field}\` ${column.type.sql}`;
+
+            if (type in options.type && column.property in options.type[type].field) {
+                let { not_null, unique, check, default: _default } = options.type[type].field[column.property];
+
+                if (not_null) field += ` NOT NULL ON CONFLICT ${MDDatabaseConflict[not_null]}`;
+
+                if (check.length) field += ` CHECK (${check.join(") CHECK (")})`;
+
+                if (unique) field += ` UNIQUE ON CONFLICT ${MDDatabaseConflict[unique]}`;
+
+                if (_default) field += ` DEFAULT ${_default}`;
+            }
+
+            return field;
+        })
+        .join(",\n    ")},
 
     ${type_to_table[type].keys.join(",\n    ")}
 );`;
