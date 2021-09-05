@@ -13,6 +13,7 @@ interface MDType {
 
 interface MDDatabaseOptions {
     unique_depth: number;
+    table: Generic.Object<{}>;
 }
 
 namespace is {
@@ -273,12 +274,21 @@ export class MDDatabase {
 
     /* #region Management Functions */
     getOptions(options: Partial<MDDatabaseOptions> = {}): MDDatabaseOptions {
-        return Object.assign(
+        let final_options = Object.assign(
             {
-                unique_depth: 0
+                unique_depth: 0,
+                table: {}
             },
             options || {}
         );
+
+        if ("table" in options) {
+            for (let table in options.table) {
+                final_options.table[table] = Object.assign({}, options.table[table]);
+            }
+        }
+
+        return final_options;
     }
 
     buildMaps(in_options: Partial<MDDatabaseOptions> = {}) {
