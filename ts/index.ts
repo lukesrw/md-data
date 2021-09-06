@@ -193,20 +193,28 @@ export class MDDatabase {
     /* #region From Functions */
     static async fromFile(location: string | string[]): Promise<MDDatabase> {
         if (Array.isArray(location)) {
-            let records = await Promise.all<MDDatabase>(location.map(MDDatabase.fromFile));
+            let file = await Promise.all(location.map(location => readFile(location, "utf-8")));
 
-            return new MDDatabase(
-                Array.prototype.concat.apply(
-                    [],
-                    records.map(record => record.data)
-                )
-            );
+            switch ((location[0].split(".").pop() || "").toLowerCase()) {
+                case "md":
+                    return MDDatabase.fromMD(file.join("\n"));
+
+                case "json":
+                    return new MDDatabase(
+                        Array.prototype.concat.apply(
+                            [],
+                            file.map(data => JSON.parse(data))
+                        )
+                    );
+
+                default:
+                    throw new Error("Unsupported format.");
+            }
         }
 
         let file = await readFile(location, "utf-8");
 
-        let type = (location.split(".").pop() || "").toLowerCase();
-        switch (type) {
+        switch ((location.split(".").pop() || "").toLowerCase()) {
             case "md":
                 return MDDatabase.fromMD(file);
 
@@ -220,12 +228,7 @@ export class MDDatabase {
 
     static fromMD(md: string | string[]) {
         if (Array.isArray(md)) {
-            return new MDDatabase(
-                Array.prototype.concat.apply(
-                    [],
-                    md.map<MDDatabase>(MDDatabase.fromMD).map(data => data.data)
-                )
-            );
+            return new MDDatabase(md.join("\n"));
         }
 
         let lines = md.split("\n");
@@ -251,7 +254,7 @@ export class MDDatabase {
                     parent: previous
                 };
 
-                if (current.depth === 1) {
+                if (current.depth === 1 || feed.length === 0) {
                     feed.push(current);
                 } else if (current.parent) {
                     if (current.depth === current.parent.depth) {
