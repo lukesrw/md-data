@@ -257,10 +257,8 @@ export class MDDatabase {
                 if (current.depth === 1 || feed.length === 0) {
                     feed.push(current);
                 } else if (current.parent) {
-                    if (current.depth === current.parent.depth) {
+                    while (current.parent && current.parent.parent && current.depth <= current.parent.depth) {
                         current.parent = current.parent.parent;
-                    } else if (current.depth < current.parent.depth && current.parent.parent) {
-                        current.parent = current.parent.parent.parent;
                     }
 
                     if (
