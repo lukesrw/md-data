@@ -239,7 +239,7 @@ export class MDDatabase {
         lines.forEach(line => {
             line = line.trim();
 
-            let depth = line.match(/^(?<depth>#{1,}\s)(?<name>.+?)($|\((?<type>.+?)\))/);
+            let depth = line.match(/^(?<depth>#{1,}\s)(?<name>.*?)($|\((?<type>.+?)\))/);
             if (depth && depth.groups) {
                 if (!depth.groups.type) {
                     throw new Error(`Unknown type for "${depth.groups.name.trim()}"`);
@@ -247,7 +247,7 @@ export class MDDatabase {
 
                 current = {
                     depth: depth.groups.depth.length - 1,
-                    name: depth.groups.name.trim().toLowerCase(),
+                    name: depth.groups.name.trim().toLowerCase() || randomUUID(),
                     type: depth.groups.type.trim().toLowerCase(),
                     children: [],
                     properties: {},
